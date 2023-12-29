@@ -4,6 +4,7 @@ import logging
 import requests
 import openai
 import copy
+import asyncio
 from azure.identity import DefaultAzureCredential
 from base64 import b64encode
 from flask import Flask, Response, request, jsonify, send_from_directory
@@ -12,8 +13,10 @@ from dotenv import load_dotenv
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.history.cosmosdbservice import CosmosConversationClient
 from orchestartors.BaseOrchestrator import BaseOrchestrator
+from orchestartors.SemanticKernelOrchestrator import SemanticKernelOrchestrator
 
-Orchestrator = BaseOrchestrator()
+# Orchestrator = BaseOrchestrator()
+Orchestrator = SemanticKernelOrchestrator()
 
 load_dotenv()
 
@@ -216,7 +219,9 @@ def add_conversation():
         request_body = request.json
         history_metadata['conversation_id'] = conversation_id
         request_body['history_metadata'] = history_metadata
-        return conversation_internal(request_body)
+        # for semantic kernel, cannot call "conversation_internal" in response - would have to insert a check for whicdh orchestrator is in use
+        result = asyncio.run(conversation_internal(request_body))
+        return result
        
     except Exception as e:
         logging.exception("Exception in /history/generate")

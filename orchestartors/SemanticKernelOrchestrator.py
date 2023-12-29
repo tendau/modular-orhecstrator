@@ -4,33 +4,19 @@ import json
 import logging
 import requests
 import copy
-import openai
 from dotenv import load_dotenv
 from flask import  Response, request, jsonify
 
+import semantic_kernel as sk
+from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+
 load_dotenv()
 
+# TODO will be passed in from orchestrator
 DATASOURCE_TYPE = os.environ.get("DATASOURCE_TYPE", "AzureCognitiveSearch")
 SEARCH_TOP_K = os.environ.get("SEARCH_TOP_K", 5)
 SEARCH_STRICTNESS = os.environ.get("SEARCH_STRICTNESS", 3)
 SEARCH_ENABLE_IN_DOMAIN = os.environ.get("SEARCH_ENABLE_IN_DOMAIN", "true")
-
-AZURE_OPENAI_TEMPERATURE = os.environ.get("AZURE_OPENAI_TEMPERATURE", 0)
-AZURE_OPENAI_EMBEDDING_ENDPOINT = os.environ.get("AZURE_OPENAI_EMBEDDING_ENDPOINT")
-AZURE_OPENAI_MAX_TOKENS = os.environ.get("AZURE_OPENAI_MAX_TOKENS", 1000)
-AZURE_OPENAI_MODEL = os.environ.get("AZURE_OPENAI_MODEL")
-AZURE_OPENAI_TOP_P = os.environ.get("AZURE_OPENAI_TOP_P", 1.0)
-AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_STOP_SEQUENCE = os.environ.get("AZURE_OPENAI_STOP_SEQUENCE")
-AZURE_OPENAI_STREAM = os.environ.get("AZURE_OPENAI_STREAM", "true")
-AZURE_OPENAI_EMBEDDING_KEY = os.environ.get("AZURE_OPENAI_EMBEDDING_KEY")
-AZURE_OPENAI_KEY = os.environ.get("AZURE_OPENAI_KEY")
-AZURE_OPENAI_EMBEDDING_NAME = os.environ.get("AZURE_OPENAI_EMBEDDING_NAME", "")
-AZURE_OPENAI_RESOURCE = os.environ.get("AZURE_OPENAI_RESOURCE")
-AZURE_OPENAI_PREVIEW_API_VERSION = os.environ.get("AZURE_OPENAI_PREVIEW_API_VERSION", "2023-08-01-preview")
-AZURE_OPENAI_SYSTEM_MESSAGE = os.environ.get("AZURE_OPENAI_SYSTEM_MESSAGE", "You are an AI assistant that helps people find information.")
-
-DATASOURCE_TYPE = os.environ.get("DATASOURCE_TYPE", "AzureCognitiveSearch")
 
 AZURE_SEARCH_QUERY_TYPE = os.environ.get("AZURE_SEARCH_QUERY_TYPE")
 AZURE_SEARCH_USE_SEMANTIC_SEARCH = os.environ.get("AZURE_SEARCH_USE_SEMANTIC_SEARCH", "false")
@@ -47,6 +33,22 @@ AZURE_SEARCH_VECTOR_COLUMNS = os.environ.get("AZURE_SEARCH_VECTOR_COLUMNS")
 AZURE_SEARCH_ENABLE_IN_DOMAIN = os.environ.get("AZURE_SEARCH_ENABLE_IN_DOMAIN", SEARCH_ENABLE_IN_DOMAIN)
 AZURE_SEARCH_TOP_K = os.environ.get("AZURE_SEARCH_TOP_K", SEARCH_TOP_K)
 AZURE_SEARCH_STRICTNESS = os.environ.get("AZURE_SEARCH_STRICTNESS", SEARCH_STRICTNESS)
+
+AZURE_OPENAI_MODEL = os.environ.get("AZURE_OPENAI_MODEL")
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_KEY = os.environ.get("AZURE_OPENAI_KEY")
+AZURE_OPENAI_TEMPERATURE = os.environ.get("AZURE_OPENAI_TEMPERATURE", 0)
+AZURE_OPENAI_TOP_P = os.environ.get("AZURE_OPENAI_TOP_P", 1.0)
+AZURE_OPENAI_RESOURCE = os.environ.get("AZURE_OPENAI_RESOURCE")
+AZURE_OPENAI_MAX_TOKENS = os.environ.get("AZURE_OPENAI_MAX_TOKENS", 1000)
+AZURE_OPENAI_STOP_SEQUENCE = os.environ.get("AZURE_OPENAI_STOP_SEQUENCE")
+AZURE_OPENAI_SYSTEM_MESSAGE = os.environ.get("AZURE_OPENAI_SYSTEM_MESSAGE", "You are an AI assistant that helps people find information.")
+AZURE_OPENAI_PREVIEW_API_VERSION = os.environ.get("AZURE_OPENAI_PREVIEW_API_VERSION", "2023-08-01-preview")
+AZURE_OPENAI_STREAM = os.environ.get("AZURE_OPENAI_STREAM", "true")
+AZURE_OPENAI_MODEL_NAME = os.environ.get("AZURE_OPENAI_MODEL_NAME", "gpt-35-turbo-16k") # Name of the model, e.g. 'gpt-35-turbo-16k' or 'gpt-4'
+AZURE_OPENAI_EMBEDDING_ENDPOINT = os.environ.get("AZURE_OPENAI_EMBEDDING_ENDPOINT")
+AZURE_OPENAI_EMBEDDING_KEY = os.environ.get("AZURE_OPENAI_EMBEDDING_KEY")
+AZURE_OPENAI_EMBEDDING_NAME = os.environ.get("AZURE_OPENAI_EMBEDDING_NAME", "")
 
 # CosmosDB Mongo vcore vector db Settings
 AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING = os.environ.get("AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING")  #This has to be secure string
@@ -82,6 +84,18 @@ SHOULD_STREAM = True if AZURE_OPENAI_STREAM.lower() == "true" else False
 DEBUG = os.environ.get("DEBUG", "false")
 DEBUG_LOGGING = DEBUG.lower() == "true"
 
+# Frontend Settings via Environment Variables
+AUTH_ENABLED = os.environ.get("AUTH_ENABLED", "true").lower()
+frontend_settings = { "auth_enabled": AUTH_ENABLED }
+
+# Semantic Kernel Settings
+kernel = sk.Kernel()
+chat_service = AzureChatCompletion(deployment_name=AZURE_OPENAI_MODEL, endpoint=AZURE_OPENAI_ENDPOINT, api_key=AZURE_OPENAI_KEY)
+kernel.add_chat_service("dev", chat_service)
+
+def format_as_ndjson(obj: dict) -> str:
+    return json.dumps(obj, ensure_ascii=False) + "\n"
+
 def fetchUserGroups(userToken, nextLink=None):
     # Recursively fetch group membership
     if nextLink:
@@ -108,7 +122,7 @@ def fetchUserGroups(userToken, nextLink=None):
     except Exception as e:
         logging.error(f"Exception in fetchUserGroups: {e}")
         return []
-
+    
 def generateFilterString(userToken):
     # Get list of groups user is a member of
     userGroups = fetchUserGroups(userToken)
@@ -119,9 +133,6 @@ def generateFilterString(userToken):
 
     group_ids = ", ".join([obj['id'] for obj in userGroups])
     return f"{AZURE_SEARCH_PERMITTED_GROUPS_COLUMN}/any(g:search.in(g, '{group_ids}'))"
-
-def format_as_ndjson(obj: dict) -> str:
-    return json.dumps(obj, ensure_ascii=False) + "\n"
 
 def prepare_body_headers_with_data(request):
     request_messages = request.json["messages"]
@@ -343,6 +354,7 @@ def formatApiResponseStreaming(rawResponse):
 
     return response
 
+
 def stream_with_data(body, headers, endpoint, history_metadata={}):
     s = requests.Session()
     try:
@@ -401,35 +413,10 @@ def stream_with_data(body, headers, endpoint, history_metadata={}):
     except Exception as e:
         yield format_as_ndjson({"error" + str(e)})
 
-
-def stream_without_data(response, history_metadata={}):
-    responseText = ""
-    for line in response:
-        if line["choices"]:
-            deltaText = line["choices"][0]["delta"].get('content')
-        else:
-            deltaText = ""
-        if deltaText and deltaText != "[DONE]":
-            responseText = deltaText
-
-        response_obj = {
-            "id": line["id"],
-            "model": line["model"],
-            "created": line["created"],
-            "object": line["object"],
-            "choices": [{
-                "messages": [{
-                    "role": "assistant",
-                    "content": responseText
-                }]
-            }],
-            "history_metadata": history_metadata
-        }
-        yield format_as_ndjson(response_obj)
-
-class BaseOrchestrator():
+class SemanticKernelOrchestrator():
     def conversation_with_data(self, request_body):
-        print(request.json["messages"])
+        print("********************** conversation_with_data")
+
         body, headers = prepare_body_headers_with_data(request)
         base_url = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
         endpoint = f"{base_url}openai/deployments/{AZURE_OPENAI_MODEL}/extensions/chat/completions?api-version={AZURE_OPENAI_PREVIEW_API_VERSION}"
@@ -449,13 +436,9 @@ class BaseOrchestrator():
 
         else:
             return Response(stream_with_data(body, headers, endpoint, history_metadata), mimetype='text/event-stream')
-
-    def conversation_without_data(self, request_body):
-        openai.api_type = "azure"
-        # openai.api_base = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
-        # openai.base_url = AZURE_OPENAI_ENDPOINT if AZURE_OPENAI_ENDPOINT else f"https://{AZURE_OPENAI_RESOURCE}.openai.azure.com/"
-        openai.api_version = "2023-08-01-preview"
-        openai.api_key = AZURE_OPENAI_KEY
+        
+    async def conversation_without_data(self, request_body):
+        print("********************** conversation_withOUT_data")
 
         request_messages = request_body["messages"]
         messages = [
@@ -471,36 +454,28 @@ class BaseOrchestrator():
                     "role": message["role"] ,
                     "content": message["content"]
                 })
-
-        # response = openai.ChatCompletion.create(
-        response = openai.chat.completions.create(
-            # engine=AZURE_OPENAI_MODEL,
-            model=AZURE_OPENAI_MODEL,
-            messages = messages,
+                
+        response = kernel.create_semantic_function(
+            prompt_template = json.dumps(messages),
             temperature=float(AZURE_OPENAI_TEMPERATURE),
             max_tokens=int(AZURE_OPENAI_MAX_TOKENS),
             top_p=float(AZURE_OPENAI_TOP_P),
-            stop=AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
-            stream=SHOULD_STREAM
+            stop_sequences=AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
         )
 
+        response2 = await kernel.run_async(response)
         history_metadata = request_body.get("history_metadata", {})
 
-        if not SHOULD_STREAM:
-            response_obj = {
-                "id": response,
-                "model": response.model,
-                "created": response.created,
-                "object": response.object,
-                "choices": [{
-                    "messages": [{
-                        "role": "assistant",
-                        "content": response.choices[0].message.content
-                    }]
-                }],
-                "history_metadata": history_metadata
-            }
-
-            return jsonify(response_obj), 200
-        else:
-            return Response(stream_without_data(response, history_metadata), mimetype='text/event-stream')
+        response_obj = {
+            "id": request_messages[0]['id'],
+            "model": AZURE_OPENAI_MODEL,
+            "created": request_messages[0]['date'],
+            "choices": [{
+                "messages": [{
+                    "role": "assistant",
+                    "content": str(response2)
+                }]
+            }],
+            "history_metadata": history_metadata
+        }
+        return jsonify(response_obj), 200
