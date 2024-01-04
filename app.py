@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from backend.auth.auth_utils import get_authenticated_user_details
 from backend.history.cosmosdbservice import CosmosConversationClient
-from orchestartors.BaseOrchestrator import BaseOrchestrator
+from orchestrators.BaseOrchestrator import BaseOrchestrator
 
 Orchestrator = BaseOrchestrator()
 
