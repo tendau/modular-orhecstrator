@@ -3,7 +3,7 @@ import os
 import logging
 import openai
 from azure.identity import DefaultAzureCredential
-from flask import Flask, Response, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 
 from backend.auth.auth_utils import get_authenticated_user_details

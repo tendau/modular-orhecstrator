@@ -20,12 +20,13 @@ class Orchestrator(ABC):
     def conversation_without_data(self, request_body):
         pass
 
-    # initialize variables
+    # Initialize search variables
     DATASOURCE_TYPE = os.environ.get("DATASOURCE_TYPE", "AzureCognitiveSearch")
     SEARCH_TOP_K = os.environ.get("SEARCH_TOP_K", 5)
     SEARCH_STRICTNESS = os.environ.get("SEARCH_STRICTNESS", 3)
     SEARCH_ENABLE_IN_DOMAIN = os.environ.get("SEARCH_ENABLE_IN_DOMAIN", "true")
 
+    # Azure OpenAI Settings
     AZURE_OPENAI_TEMPERATURE = os.environ.get("AZURE_OPENAI_TEMPERATURE", 0)
     AZURE_OPENAI_EMBEDDING_ENDPOINT = os.environ.get("AZURE_OPENAI_EMBEDDING_ENDPOINT")
     AZURE_OPENAI_MAX_TOKENS = os.environ.get("AZURE_OPENAI_MAX_TOKENS", 1000)
@@ -41,6 +42,7 @@ class Orchestrator(ABC):
     AZURE_OPENAI_PREVIEW_API_VERSION = os.environ.get("AZURE_OPENAI_PREVIEW_API_VERSION", "2023-08-01-preview")
     AZURE_OPENAI_SYSTEM_MESSAGE = os.environ.get("AZURE_OPENAI_SYSTEM_MESSAGE", "You are an AI assistant that helps people find information.")
 
+    # Azure Search Settings
     AZURE_SEARCH_QUERY_TYPE = os.environ.get("AZURE_SEARCH_QUERY_TYPE")
     AZURE_SEARCH_USE_SEMANTIC_SEARCH = os.environ.get("AZURE_SEARCH_USE_SEMANTIC_SEARCH", "false")
     AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG = os.environ.get("AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG", "default")
@@ -88,10 +90,9 @@ class Orchestrator(ABC):
 
     SHOULD_STREAM = True if AZURE_OPENAI_STREAM.lower() == "true" else False
 
-
     # methods to implement in orchestrator
     def fetchUserGroups(self, userToken, nextLink=None):
-    # Recursively fetch group membership
+        # Recursively fetch group membership
         if nextLink:
             endpoint = nextLink
         else:
@@ -116,7 +117,8 @@ class Orchestrator(ABC):
         except Exception as e:
             logging.error(f"Exception in fetchUserGroups: {e}")
             return []
-        
+
+    # Filter for permitted user groups    
     def generateFilterString(self, userToken):
         # Get list of groups user is a member of
         userGroups = self.fetchUserGroups(self, userToken)
@@ -128,9 +130,11 @@ class Orchestrator(ABC):
         group_ids = ", ".join([obj['id'] for obj in userGroups])
         return f"{self.AZURE_SEARCH_PERMITTED_GROUPS_COLUMN}/any(g:search.in(g, '{group_ids}'))"
 
+    # Format response as newline delimited json
     def format_as_ndjson(self, obj: dict) -> str:
         return json.dumps(obj, ensure_ascii=False) + "\n"
 
+    # Format request body and headers with relevant info based on search type
     def prepare_body_headers_with_data(self, request):
         request_messages = request.json["messages"]
 
@@ -280,6 +284,7 @@ class Orchestrator(ABC):
 
         return body, headers
 
+    # Format chat response with no streaming output
     def formatApiResponseNoStreaming(self, rawResponse):
         if 'error' in rawResponse:
             return {"error": rawResponse["error"]}
@@ -305,6 +310,7 @@ class Orchestrator(ABC):
 
         return response
     
+    # Format chat response with streaming output
     def formatApiResponseStreaming(self, rawResponse):
         if 'error' in rawResponse:
             return {"error": rawResponse["error"]}
@@ -351,7 +357,7 @@ class Orchestrator(ABC):
 
         return response
         
-    
+    # Stream chat response with appropriate role referencing data source 
     def stream_with_data(self, body, headers, endpoint, history_metadata={}):
         s = requests.Session()
         try:
@@ -410,6 +416,7 @@ class Orchestrator(ABC):
         except Exception as e:
             yield self.format_as_ndjson({"error" + str(e)})
 
+    # Stream chat response with assistant role from default endpoint
     def stream_without_data(self, response, history_metadata={}):
         responseText = ""
         for line in response:
