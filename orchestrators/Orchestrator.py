@@ -119,75 +119,75 @@ class Orchestrator(ABC):
         
     def generateFilterString(self, userToken):
         # Get list of groups user is a member of
-        userGroups = self.fetchUserGroups(userToken)
+        userGroups = self.fetchUserGroups(self, userToken)
 
         # Construct filter string
         if not userGroups:
             logging.debug("No user groups found")
 
         group_ids = ", ".join([obj['id'] for obj in userGroups])
-        return f"{AZURE_SEARCH_PERMITTED_GROUPS_COLUMN}/any(g:search.in(g, '{group_ids}'))"
+        return f"{self.AZURE_SEARCH_PERMITTED_GROUPS_COLUMN}/any(g:search.in(g, '{group_ids}'))"
 
-    def format_as_ndjson(obj: dict) -> str:
+    def format_as_ndjson(self, obj: dict) -> str:
         return json.dumps(obj, ensure_ascii=False) + "\n"
 
-    def prepare_body_headers_with_data(request):
+    def prepare_body_headers_with_data(self, request):
         request_messages = request.json["messages"]
 
         body = {
             "messages": request_messages,
-            "temperature": float(AZURE_OPENAI_TEMPERATURE),
-            "max_tokens": int(AZURE_OPENAI_MAX_TOKENS),
-            "top_p": float(AZURE_OPENAI_TOP_P),
-            "stop": AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
-            "stream": SHOULD_STREAM,
+            "temperature": float(self.AZURE_OPENAI_TEMPERATURE),
+            "max_tokens": int(self.AZURE_OPENAI_MAX_TOKENS),
+            "top_p": float(self.AZURE_OPENAI_TOP_P),
+            "stop": self.AZURE_OPENAI_STOP_SEQUENCE.split("|") if self.AZURE_OPENAI_STOP_SEQUENCE else None,
+            "stream": self.SHOULD_STREAM,
             "dataSources": []
         }
 
-        if DATASOURCE_TYPE == "AzureCognitiveSearch":
+        if self.DATASOURCE_TYPE == "AzureCognitiveSearch":
             # Set query type
             query_type = "simple"
-            if AZURE_SEARCH_QUERY_TYPE:
-                query_type = AZURE_SEARCH_QUERY_TYPE
-            elif AZURE_SEARCH_USE_SEMANTIC_SEARCH.lower() == "true" and AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG:
+            if self.AZURE_SEARCH_QUERY_TYPE:
+                query_type = self.AZURE_SEARCH_QUERY_TYPE
+            elif self.AZURE_SEARCH_USE_SEMANTIC_SEARCH.lower() == "true" and self.AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG:
                 query_type = "semantic"
 
             # Set filter
             filter = None
             userToken = None
-            if AZURE_SEARCH_PERMITTED_GROUPS_COLUMN:
+            if self.AZURE_SEARCH_PERMITTED_GROUPS_COLUMN:
                 userToken = request.headers.get('X-MS-TOKEN-AAD-ACCESS-TOKEN', "")
-                if DEBUG_LOGGING:
+                if self.DEBUG_LOGGING:
                     logging.debug(f"USER TOKEN is {'present' if userToken else 'not present'}")
 
-                filter = generateFilterString(userToken)
-                if DEBUG_LOGGING:
+                filter = self.generateFilterString(userToken)
+                if self.DEBUG_LOGGING:
                     logging.debug(f"FILTER: {filter}")
 
             body["dataSources"].append(
                 {
                     "type": "AzureCognitiveSearch",
                     "parameters": {
-                        "endpoint": f"https://{AZURE_SEARCH_SERVICE}.search.windows.net",
-                        "key": AZURE_SEARCH_KEY,
-                        "indexName": AZURE_SEARCH_INDEX,
+                        "endpoint": f"https://{self.AZURE_SEARCH_SERVICE}.search.windows.net",
+                        "key": self.AZURE_SEARCH_KEY,
+                        "indexName": self.AZURE_SEARCH_INDEX,
                         "fieldsMapping": {
-                            "contentFields": AZURE_SEARCH_CONTENT_COLUMNS.split("|") if AZURE_SEARCH_CONTENT_COLUMNS else [],
-                            "titleField": AZURE_SEARCH_TITLE_COLUMN if AZURE_SEARCH_TITLE_COLUMN else None,
-                            "urlField": AZURE_SEARCH_URL_COLUMN if AZURE_SEARCH_URL_COLUMN else None,
-                            "filepathField": AZURE_SEARCH_FILENAME_COLUMN if AZURE_SEARCH_FILENAME_COLUMN else None,
-                            "vectorFields": AZURE_SEARCH_VECTOR_COLUMNS.split("|") if AZURE_SEARCH_VECTOR_COLUMNS else []
+                            "contentFields": self.AZURE_SEARCH_CONTENT_COLUMNS.split("|") if self.AZURE_SEARCH_CONTENT_COLUMNS else [],
+                            "titleField": self.AZURE_SEARCH_TITLE_COLUMN if self.AZURE_SEARCH_TITLE_COLUMN else None,
+                            "urlField": self.AZURE_SEARCH_URL_COLUMN if self.AZURE_SEARCH_URL_COLUMN else None,
+                            "filepathField": self.AZURE_SEARCH_FILENAME_COLUMN if self.AZURE_SEARCH_FILENAME_COLUMN else None,
+                            "vectorFields": self.AZURE_SEARCH_VECTOR_COLUMNS.split("|") if self.AZURE_SEARCH_VECTOR_COLUMNS else []
                         },
-                        "inScope": True if AZURE_SEARCH_ENABLE_IN_DOMAIN.lower() == "true" else False,
-                        "topNDocuments": AZURE_SEARCH_TOP_K,
+                        "inScope": True if self.AZURE_SEARCH_ENABLE_IN_DOMAIN.lower() == "true" else False,
+                        "topNDocuments": self.AZURE_SEARCH_TOP_K,
                         "queryType": query_type,
-                        "semanticConfiguration": AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG if AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG else "",
-                        "roleInformation": AZURE_OPENAI_SYSTEM_MESSAGE,
+                        "semanticConfiguration": self.AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG if self.AZURE_SEARCH_SEMANTIC_SEARCH_CONFIG else "",
+                        "roleInformation": self.AZURE_OPENAI_SYSTEM_MESSAGE,
                         "filter": filter,
-                        "strictness": int(AZURE_SEARCH_STRICTNESS)
+                        "strictness": int(self.AZURE_SEARCH_STRICTNESS)
                     }
                 })
-        elif DATASOURCE_TYPE == "AzureCosmosDB":
+        elif self.DATASOURCE_TYPE == "AzureCosmosDB":
             # Set query type
             query_type = "vector"
 
@@ -195,73 +195,73 @@ class Orchestrator(ABC):
                 {
                     "type": "AzureCosmosDB",
                     "parameters": {
-                        "connectionString": AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING,
-                        "indexName": AZURE_COSMOSDB_MONGO_VCORE_INDEX,
-                        "databaseName": AZURE_COSMOSDB_MONGO_VCORE_DATABASE,
-                        "containerName": AZURE_COSMOSDB_MONGO_VCORE_CONTAINER,                    
+                        "connectionString": self.AZURE_COSMOSDB_MONGO_VCORE_CONNECTION_STRING,
+                        "indexName": self.AZURE_COSMOSDB_MONGO_VCORE_INDEX,
+                        "databaseName": self.AZURE_COSMOSDB_MONGO_VCORE_DATABASE,
+                        "containerName": self.AZURE_COSMOSDB_MONGO_VCORE_CONTAINER,                    
                         "fieldsMapping": {
-                            "contentFields": AZURE_COSMOSDB_MONGO_VCORE_CONTENT_COLUMNS.split("|") if AZURE_COSMOSDB_MONGO_VCORE_CONTENT_COLUMNS else [],
-                            "titleField": AZURE_COSMOSDB_MONGO_VCORE_TITLE_COLUMN if AZURE_COSMOSDB_MONGO_VCORE_TITLE_COLUMN else None,
-                            "urlField": AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN if AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN else None,
-                            "filepathField": AZURE_COSMOSDB_MONGO_VCORE_FILENAME_COLUMN if AZURE_COSMOSDB_MONGO_VCORE_FILENAME_COLUMN else None,
-                            "vectorFields": AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS.split("|") if AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS else []
+                            "contentFields": self.AZURE_COSMOSDB_MONGO_VCORE_CONTENT_COLUMNS.split("|") if self.AZURE_COSMOSDB_MONGO_VCORE_CONTENT_COLUMNS else [],
+                            "titleField": self.AZURE_COSMOSDB_MONGO_VCORE_TITLE_COLUMN if self.AZURE_COSMOSDB_MONGO_VCORE_TITLE_COLUMN else None,
+                            "urlField": self.AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN if self.AZURE_COSMOSDB_MONGO_VCORE_URL_COLUMN else None,
+                            "filepathField": self.AZURE_COSMOSDB_MONGO_VCORE_FILENAME_COLUMN if self.AZURE_COSMOSDB_MONGO_VCORE_FILENAME_COLUMN else None,
+                            "vectorFields": self.AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS.split("|") if self.AZURE_COSMOSDB_MONGO_VCORE_VECTOR_COLUMNS else []
                         },
-                        "inScope": True if AZURE_COSMOSDB_MONGO_VCORE_ENABLE_IN_DOMAIN.lower() == "true" else False,
-                        "topNDocuments": AZURE_COSMOSDB_MONGO_VCORE_TOP_K,
-                        "strictness": int(AZURE_COSMOSDB_MONGO_VCORE_STRICTNESS),
+                        "inScope": True if self.AZURE_COSMOSDB_MONGO_VCORE_ENABLE_IN_DOMAIN.lower() == "true" else False,
+                        "topNDocuments": self.AZURE_COSMOSDB_MONGO_VCORE_TOP_K,
+                        "strictness": int(self.AZURE_COSMOSDB_MONGO_VCORE_STRICTNESS),
                         "queryType": query_type,
-                        "roleInformation": AZURE_OPENAI_SYSTEM_MESSAGE
+                        "roleInformation": self.AZURE_OPENAI_SYSTEM_MESSAGE
                     }
                 }
             )
 
-        elif DATASOURCE_TYPE == "Elasticsearch":
+        elif self.DATASOURCE_TYPE == "Elasticsearch":
             body["dataSources"].append(
                 {
                     "messages": request_messages,
-                    "temperature": float(AZURE_OPENAI_TEMPERATURE),
-                    "max_tokens": int(AZURE_OPENAI_MAX_TOKENS),
-                    "top_p": float(AZURE_OPENAI_TOP_P),
-                    "stop": AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
-                    "stream": SHOULD_STREAM,
+                    "temperature": float(self.AZURE_OPENAI_TEMPERATURE),
+                    "max_tokens": int(self.AZURE_OPENAI_MAX_TOKENS),
+                    "top_p": float(self.AZURE_OPENAI_TOP_P),
+                    "stop": self.AZURE_OPENAI_STOP_SEQUENCE.split("|") if self.AZURE_OPENAI_STOP_SEQUENCE else None,
+                    "stream": self.SHOULD_STREAM,
                     "dataSources": [
                         {
                             "type": "AzureCognitiveSearch",
                             "parameters": {
-                                "endpoint": ELASTICSEARCH_ENDPOINT,
-                                "encodedApiKey": ELASTICSEARCH_ENCODED_API_KEY,
-                                "indexName": ELASTICSEARCH_INDEX,
+                                "endpoint": self.ELASTICSEARCH_ENDPOINT,
+                                "encodedApiKey": self.ELASTICSEARCH_ENCODED_API_KEY,
+                                "indexName": self.ELASTICSEARCH_INDEX,
                                 "fieldsMapping": {
-                                    "contentFields": ELASTICSEARCH_CONTENT_COLUMNS.split("|") if ELASTICSEARCH_CONTENT_COLUMNS else [],
-                                    "titleField": ELASTICSEARCH_TITLE_COLUMN if ELASTICSEARCH_TITLE_COLUMN else None,
-                                    "urlField": ELASTICSEARCH_URL_COLUMN if ELASTICSEARCH_URL_COLUMN else None,
-                                    "filepathField": ELASTICSEARCH_FILENAME_COLUMN if ELASTICSEARCH_FILENAME_COLUMN else None,
-                                    "vectorFields": ELASTICSEARCH_VECTOR_COLUMNS.split("|") if ELASTICSEARCH_VECTOR_COLUMNS else []
+                                    "contentFields": self.ELASTICSEARCH_CONTENT_COLUMNS.split("|") if self.ELASTICSEARCH_CONTENT_COLUMNS else [],
+                                    "titleField": self.ELASTICSEARCH_TITLE_COLUMN if self.ELASTICSEARCH_TITLE_COLUMN else None,
+                                    "urlField": self.ELASTICSEARCH_URL_COLUMN if self.ELASTICSEARCH_URL_COLUMN else None,
+                                    "filepathField": self.ELASTICSEARCH_FILENAME_COLUMN if self.ELASTICSEARCH_FILENAME_COLUMN else None,
+                                    "vectorFields": self.ELASTICSEARCH_VECTOR_COLUMNS.split("|") if self.ELASTICSEARCH_VECTOR_COLUMNS else []
                                 },
-                                "inScope": True if ELASTICSEARCH_ENABLE_IN_DOMAIN.lower() == "true" else False,
-                                "topNDocuments": int(ELASTICSEARCH_TOP_K),
-                                "queryType": ELASTICSEARCH_QUERY_TYPE,
-                                "roleInformation": AZURE_OPENAI_SYSTEM_MESSAGE,
-                                "embeddingEndpoint": AZURE_OPENAI_EMBEDDING_ENDPOINT,
-                                "embeddingKey": AZURE_OPENAI_EMBEDDING_KEY,
-                                "embeddingModelId": ELASTICSEARCH_EMBEDDING_MODEL_ID,
-                                "strictness": int(ELASTICSEARCH_STRICTNESS)
+                                "inScope": True if self.ELASTICSEARCH_ENABLE_IN_DOMAIN.lower() == "true" else False,
+                                "topNDocuments": int(self.ELASTICSEARCH_TOP_K),
+                                "queryType": self.ELASTICSEARCH_QUERY_TYPE,
+                                "roleInformation": self.AZURE_OPENAI_SYSTEM_MESSAGE,
+                                "embeddingEndpoint": self.AZURE_OPENAI_EMBEDDING_ENDPOINT,
+                                "embeddingKey": self.AZURE_OPENAI_EMBEDDING_KEY,
+                                "embeddingModelId": self.ELASTICSEARCH_EMBEDDING_MODEL_ID,
+                                "strictness": int(self.ELASTICSEARCH_STRICTNESS)
                             }
                         }
                     ]
                 }
             )
         else:
-            raise Exception(f"DATASOURCE_TYPE is not configured or unknown: {DATASOURCE_TYPE}")
+            raise Exception(f"DATASOURCE_TYPE is not configured or unknown: {self.DATASOURCE_TYPE}")
 
         if "vector" in query_type.lower():
-            if AZURE_OPENAI_EMBEDDING_NAME:
-                body["dataSources"][0]["parameters"]["embeddingDeploymentName"] = AZURE_OPENAI_EMBEDDING_NAME
+            if self.AZURE_OPENAI_EMBEDDING_NAME:
+                body["dataSources"][0]["parameters"]["embeddingDeploymentName"] = self.AZURE_OPENAI_EMBEDDING_NAME
             else:
-                body["dataSources"][0]["parameters"]["embeddingEndpoint"] = AZURE_OPENAI_EMBEDDING_ENDPOINT
-                body["dataSources"][0]["parameters"]["embeddingKey"] = AZURE_OPENAI_EMBEDDING_KEY
+                body["dataSources"][0]["parameters"]["embeddingEndpoint"] = self.AZURE_OPENAI_EMBEDDING_ENDPOINT
+                body["dataSources"][0]["parameters"]["embeddingKey"] = self.AZURE_OPENAI_EMBEDDING_KEY
 
-        if DEBUG_LOGGING:
+        if self.DEBUG_LOGGING:
             body_clean = copy.deepcopy(body)
             if body_clean["dataSources"][0]["parameters"].get("key"):
                 body_clean["dataSources"][0]["parameters"]["key"] = "*****"
@@ -274,7 +274,7 @@ class Orchestrator(ABC):
 
         headers = {
             'Content-Type': 'application/json',
-            'api-key': AZURE_OPENAI_KEY,
+            'api-key': self.AZURE_OPENAI_KEY,
             "x-ms-useragent": "GitHubSampleWebApp/PublicAPI/3.0.0"
         }
 
@@ -369,17 +369,17 @@ class Orchestrator(ABC):
                         'history_metadata': history_metadata
                     }
                     if line:
-                        if AZURE_OPENAI_PREVIEW_API_VERSION == '2023-06-01-preview':
+                        if self.AZURE_OPENAI_PREVIEW_API_VERSION == '2023-06-01-preview':
                             lineJson = json.loads(line.lstrip(b'data:').decode('utf-8'))
                         else:
                             try:
                                 rawResponse = json.loads(line.lstrip(b'data:').decode('utf-8'))
-                                lineJson = formatApiResponseStreaming(rawResponse)
+                                lineJson = self.formatApiResponseStreaming(rawResponse)
                             except json.decoder.JSONDecodeError:
                                 continue
 
                         if 'error' in lineJson:
-                            yield format_as_ndjson(lineJson)
+                            yield self.format_as_ndjson(self, lineJson)
                         response["id"] = lineJson["id"]
                         response["model"] = lineJson["model"]
                         response["created"] = lineJson["created"]
@@ -392,7 +392,7 @@ class Orchestrator(ABC):
                             response["choices"][0]["messages"].append(lineJson["choices"][0]["messages"][0]["delta"])
                             yield self.format_as_ndjson(response)
                         elif role == "assistant": 
-                            if response['apim-request-id'] and DEBUG_LOGGING: 
+                            if response['apim-request-id'] and self.DEBUG_LOGGING: 
                                 logging.debug(f"RESPONSE apim-request-id: {response['apim-request-id']}")
                             response["choices"][0]["messages"].append({
                                 "role": "assistant",
@@ -434,6 +434,3 @@ class Orchestrator(ABC):
                 "history_metadata": history_metadata
             }
             yield self.format_as_ndjson(response_obj)
-
-    # override? how to 
-    # pass in keys - initialization for client
