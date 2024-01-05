@@ -5,7 +5,7 @@ from flask import  Response, request, jsonify
 
 class BaseOrchestrator(Orchestrator):
     def conversation_with_data(self, request_body):
-        print(request.json["messages"])
+        # print(request.json["messages"])
         body, headers = super().prepare_body_headers_with_data(request)
         base_url = super().AZURE_OPENAI_ENDPOINT if super().AZURE_OPENAI_ENDPOINT else f"https://{super().AZURE_OPENAI_RESOURCE}.openai.azure.com/"
         endpoint = f"{base_url}openai/deployments/{super().AZURE_OPENAI_MODEL}/extensions/chat/completions?api-version={super().AZURE_OPENAI_PREVIEW_API_VERSION}"
